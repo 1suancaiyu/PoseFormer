@@ -172,14 +172,19 @@ class PoseTransformer(nn.Module):
 
 
     def forward(self, x):
+        print("poseformer input x shape ",x.shape)
         x = x.permute(0, 3, 1, 2)
         b, _, _, p = x.shape
         ### now x is [batch_size, 2 channels, receptive frames, joint_num], following image data
+        print("poseformer permute x shape ",x.shape)
         x = self.Spatial_forward_features(x)
+        print('poseformer Spatial_forward_features output shape', x.shape)
         x = self.forward_features(x)
+        print('poseformer forward_features output shape', x.shape)
         x = self.head(x)
-
+        print('poseformer model head output shape', x.shape)
         x = x.view(b, 1, p, -1)
-
+        print('poseformer model view shape', x.shape)
+        print('poseformer output \n ', x)
         return x
 

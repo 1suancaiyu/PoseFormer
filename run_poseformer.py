@@ -31,11 +31,13 @@ from common.generators import ChunkedGenerator, UnchunkedGenerator
 from time import time
 from common.utils import *
 
+# wsx
+from torchsummary import summary
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1"
-# print(torch.cuda.device_count())
+print("log: device count ",torch.cuda.device_count())
 
 
 ###################
@@ -51,6 +53,8 @@ except OSError as e:
 
 print('Loading dataset...')
 dataset_path = 'data/data_3d_' + args.dataset + '.npz'
+print('log: dataset_path: ',dataset_path)
+
 if args.dataset == 'h36m':
     from common.h36m_dataset import Human36mDataset
     dataset = Human36mDataset(dataset_path)
@@ -63,6 +67,7 @@ elif args.dataset.startswith('custom'):
 else:
     raise KeyError('Invalid dataset')
 
+print('log: dataset: ',dataset)
 print('Preparing data...')
 for subject in dataset.subjects():
     for action in dataset[subject].keys():
@@ -119,6 +124,10 @@ if not args.render:
 else:
     subjects_test = [args.viz_subject]
 
+print("log: subjects_train.shape: ",len(subjects_train))
+print("log: subjects_train: ",subjects_train)
+print("log: subjects_test: ",subjects_test)
+print("log: subjects_semi: ",subjects_semi)
 
 def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
     out_poses_3d = []
@@ -216,6 +225,11 @@ if torch.cuda.is_available():
     model_pos_train = nn.DataParallel(model_pos_train)
     model_pos_train = model_pos_train.cuda()
 
+    # wsx
+    # device = torch.cuda.device("cuda")
+    model = model_pos.to("cuda")
+    print("log: model_pos", model_pos)
+    #summary(model, (0, 3, 1, 2))
 
 if args.resume or args.evaluate:
     chk_filename = os.path.join(args.checkpoint, args.resume if args.resume else args.evaluate)
