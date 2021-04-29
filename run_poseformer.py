@@ -33,12 +33,13 @@ from common.utils import *
 
 # wsx
 from torchsummary import summary
+#from visdom import Visdom
+#viz = Visdom()
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1"
 print("log: device count ",torch.cuda.device_count())
-
 
 ###################
 args = parse_args()
@@ -227,9 +228,9 @@ if torch.cuda.is_available():
 
     # wsx
     # device = torch.cuda.device("cuda")
-    model = model_pos.to("cuda")
+    model = PoseTransformer.to("cuda")
     print("log: model_pos", model_pos)
-    #summary(model, (0, 3, 1, 2))
+    summary(model, (0, 3, 1, 2))
 
 if args.resume or args.evaluate:
     chk_filename = os.path.join(args.checkpoint, args.resume if args.resume else args.evaluate)
