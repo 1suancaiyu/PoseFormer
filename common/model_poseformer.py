@@ -83,9 +83,11 @@ class Block(nn.Module):
         return x
 
 class PoseTransformer(nn.Module):
-    def __init__(self, num_frame=9, num_joints=17, in_chans=2, embed_dim_ratio=32, depth=4,
+    def __init__(self, num_frame=9, num_joints=17, in_chans=2, embed_dim_ratio: object = 32, depth=4,
                  num_heads=8, mlp_ratio=2., qkv_bias=True, qk_scale=None,
-                 drop_rate=0., attn_drop_rate=0., drop_path_rate=0.2,  norm_layer=None):
+                 drop_rate=0., attn_drop_rate=0., drop_path_rate=0.2, norm_layer=None,
+                 num_class=30
+                 ):
         """    ##########hybrid_backbone=None, representation_size=None,
         Args:
             num_frame (int, tuple): input frame number
@@ -101,6 +103,7 @@ class PoseTransformer(nn.Module):
             attn_drop_rate (float): attention dropout rate
             drop_path_rate (float): stochastic depth rate
             norm_layer: (nn.Module): normalization layer
+            num_class (int): the pose action class amount  30
         """
         super().__init__()
 
@@ -141,6 +144,13 @@ class PoseTransformer(nn.Module):
             nn.Linear(embed_dim , out_dim),
         )
 
+        # wsx aciton_class_head
+        self.action_class_head = nn.Sequential(
+            nn.Conv1d(in_channels=embed_dim, out_channels=num_class, kernel_size= 1),
+        )
+
+
+
 
     def Spatial_forward_features(self, x):
         b, _, f, p = x.shape  ##### b is batch size, f is number of frames, p is number of joints
@@ -170,21 +180,29 @@ class PoseTransformer(nn.Module):
         x = x.view(b, 1, -1)
         return x
 
-
     def forward(self, x):
-        print("poseformer input x shape ",x.shape)
+        print(x.shape) #[170, 81, 17, 2]
         x = x.permute(0, 3, 1, 2)
+        print(x.shape) #[170, 2, 81, 17]
         b, _, _, p = x.shape
+        print(x.shape) #[170, 2, 81, 17] b:batch_size p:joint_num
         ### now x is [batch_size, 2 channels, receptive frames, joint_num], following image data
-        print("poseformer permute x shape ",x.shape)
         x = self.Spatial_forward_features(x)
-        print('poseformer Spatial_forward_features output shape', x.shape)
+        print(x.shape) #[170, 81, 544]
         x = self.forward_features(x)
-        print('poseformer forward_features output shape', x.shape)
+        print(x.shape) #[170, 1, 544]
+        print(x)  # [170, 1, 544]
+
+        # action_class_head
+        # action_class = F.avg_pool1d(x, kernel_size=5)
+        action_class = x.permute(0,2,1)
+        print(action_class.shape) #[170, 544, 1]
+        action_class = self.action_class_head(action_class)
+        action_class = F.softmax(action_class,dim=0)
+        print(action_class.shape) # [170, 30, 1]
+        print(action_class)
+
         x = self.head(x)
-        print('poseformer model head output shape', x.shape)
         x = x.view(b, 1, p, -1)
-        print('poseformer model view shape', x.shape)
-        print('poseformer output \n ', x)
-        return x
+        return x, action_class
 

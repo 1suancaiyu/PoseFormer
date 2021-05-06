@@ -38,7 +38,7 @@ from torchsummary import summary
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1"
+os.environ["CUDA_VISIBLE_DEVICES"] = "0, 1,2"
 print("log: device count ",torch.cuda.device_count())
 
 ###################
@@ -70,9 +70,14 @@ else:
 
 print('log: dataset: ',dataset)
 print('Preparing data...')
+print(dataset.subjects())
 for subject in dataset.subjects():
+    print("log: subject ",subject)
+    print(len(dataset[subject].keys()))
+    print("log: dataset[subject].keys()",dataset[subject].keys())
     for action in dataset[subject].keys():
         anim = dataset[subject][action]
+        #print("log: anim \n",anim)
 
         if 'positions' in anim:
             positions_3d = []
@@ -88,7 +93,11 @@ keypoints_metadata = keypoints['metadata'].item()
 keypoints_symmetry = keypoints_metadata['keypoints_symmetry']
 kps_left, kps_right = list(keypoints_symmetry[0]), list(keypoints_symmetry[1])
 joints_left, joints_right = list(dataset.skeleton().joints_left()), list(dataset.skeleton().joints_right())
+# print("keypoints['positions_2d'].item()\n",keypoints['positions_2d'].item())
 keypoints = keypoints['positions_2d'].item()
+action_label = keypoints['S1'].keys()
+
+
 
 ###################
 for subject in dataset.subjects():
@@ -131,6 +140,8 @@ print("log: subjects_test: ",subjects_test)
 print("log: subjects_semi: ",subjects_semi)
 
 def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
+    # wsx
+    # out_poses_action = []
     out_poses_3d = []
     out_poses_2d = []
     out_camera_params = []
@@ -146,6 +157,7 @@ def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
                     continue
 
             poses_2d = keypoints[subject][action]
+            print(poses_2d)
             for i in range(len(poses_2d)): # Iterate across cameras
                 out_poses_2d.append(poses_2d[i])
 
@@ -181,8 +193,7 @@ def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
             out_poses_2d[i] = out_poses_2d[i][::stride]
             if out_poses_3d is not None:
                 out_poses_3d[i] = out_poses_3d[i][::stride]
-
-
+    # wsx
     return out_camera_params, out_poses_3d, out_poses_2d
 
 action_filter = None if args.actions == '*' else args.actions.split(',')
@@ -228,9 +239,9 @@ if torch.cuda.is_available():
 
     # wsx
     # device = torch.cuda.device("cuda")
-    model = PoseTransformer.to("cuda")
-    print("log: model_pos", model_pos)
-    summary(model, (0, 3, 1, 2))
+    # model = PoseTransformer.to("cuda")
+    # print("log: model_pos", model_pos)
+    # summary(model, (0, 3, 1, 2))
 
 if args.resume or args.evaluate:
     chk_filename = os.path.join(args.checkpoint, args.resume if args.resume else args.evaluate)
@@ -258,12 +269,16 @@ def eval_data_prepare(receptive_field, inputs_2d, inputs_3d):
 ###################
 
 if not args.evaluate:
+    # wsx input data
     cameras_train, poses_train, poses_train_2d = fetch(subjects_train, action_filter, subset=args.subset)
+    # action_train = fetch_action(subjects_train,
 
     lr = args.learning_rate
     optimizer = optim.AdamW(model_pos_train.parameters(), lr=lr, weight_decay=0.1)
 
     lr_decay = args.lr_decay
+
+    # wsx output data
     losses_3d_train = []
     losses_3d_train_eval = []
     losses_3d_valid = []
@@ -319,12 +334,16 @@ if not args.evaluate:
             optimizer.zero_grad()
 
             # Predict 3D poses
-            predicted_3d_pos = model_pos_train(inputs_2d)
+            # wsx
+            predicted_3d_pos = model_pos_train(inputs_2d) # inputs_2d (512,81,17,2)
+            # predicted_action = model_action_train(inputs_2d)
 
             del inputs_2d
             torch.cuda.empty_cache()
 
+            # wsx loss
             loss_3d_pos = mpjpe(predicted_3d_pos, inputs_3d)
+            # loss_action = suancaiyu(predicted_action, inputs_action)
             epoch_loss_3d_train += inputs_3d.shape[0] * inputs_3d.shape[1] * loss_3d_pos.item()
             N += inputs_3d.shape[0] * inputs_3d.shape[1]
 
@@ -334,6 +353,7 @@ if not args.evaluate:
 
             optimizer.step()
             del inputs_3d, loss_3d_pos, predicted_3d_pos
+            # del inputs_action, predicted_action
             torch.cuda.empty_cache()
 
         losses_3d_train.append(epoch_loss_3d_train / N)
@@ -708,6 +728,8 @@ else:
                     continue
 
             poses_act, poses_2d_act = fetch_actions(actions[action_key])
+            pirnt("poses_act.shape",poses_act.shape)
+            pirnt("poses_2d_act.shape",poses_2d_act.shape)
             gen = UnchunkedGenerator(None, poses_act, poses_2d_act,
                                      pad=pad, causal_shift=causal_shift, augment=args.test_time_augmentation,
                                      kps_left=kps_left, kps_right=kps_right, joints_left=joints_left,
