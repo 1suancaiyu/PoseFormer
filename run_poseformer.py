@@ -77,7 +77,6 @@ for subject in dataset.subjects():
     print("log: dataset[subject].keys()",dataset[subject].keys())
     for action in dataset[subject].keys():
         anim = dataset[subject][action]
-        #print("log: anim \n",anim)
 
         if 'positions' in anim:
             positions_3d = []
@@ -141,12 +140,14 @@ print("log: subjects_semi: ",subjects_semi)
 
 def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
     # wsx
-    # out_poses_action = []
     out_poses_3d = []
     out_poses_2d = []
     out_camera_params = []
+    out_action_class_label = []
+    action_class_number = -1
     for subject in subjects:
         for action in keypoints[subject].keys():
+            action_class_number = action_class_number +1  # use the action_class_number represent the action from 0 to 30
             if action_filter is not None:
                 found = False
                 for a in action_filter:
@@ -157,7 +158,7 @@ def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
                     continue
 
             poses_2d = keypoints[subject][action]
-            print(poses_2d)
+            #print(poses_2d)
             for i in range(len(poses_2d)): # Iterate across cameras
                 out_poses_2d.append(poses_2d[i])
 
@@ -171,8 +172,12 @@ def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
             if parse_3d_poses and 'positions_3d' in dataset[subject][action]:
                 poses_3d = dataset[subject][action]['positions_3d']
                 assert len(poses_3d) == len(poses_2d), 'Camera count mismatch'
+                log = len(poses_3d)
                 for i in range(len(poses_3d)): # Iterate across cameras
                     out_poses_3d.append(poses_3d[i])
+                    # wsx
+                    out_action_class_label.append(action_class_number)
+        action_class_number = -1
 
     if len(out_camera_params) == 0:
         out_camera_params = None
@@ -194,13 +199,13 @@ def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
             if out_poses_3d is not None:
                 out_poses_3d[i] = out_poses_3d[i][::stride]
     # wsx
-    return out_camera_params, out_poses_3d, out_poses_2d
+    return out_camera_params, out_poses_3d, out_poses_2d, out_action_class_label
 
 action_filter = None if args.actions == '*' else args.actions.split(',')
 if action_filter is not None:
     print('Selected actions:', action_filter)
 
-cameras_valid, poses_valid, poses_valid_2d = fetch(subjects_test, action_filter)
+cameras_valid, poses_valid, poses_valid_2d, action_class_valid = fetch(subjects_test, action_filter)
 
 
 receptive_field = args.number_of_frames
@@ -251,7 +256,7 @@ if args.resume or args.evaluate:
     model_pos.load_state_dict(checkpoint['model_pos'], strict=False)
 
 
-test_generator = UnchunkedGenerator(cameras_valid, poses_valid, poses_valid_2d,
+test_generator = UnchunkedGenerator(cameras_valid, poses_valid, poses_valid_2d, action_class_valid,
                                     pad=pad, causal_shift=causal_shift, augment=False,
                                     kps_left=kps_left, kps_right=kps_right, joints_left=joints_left, joints_right=joints_right)
 print('INFO: Testing on {} frames'.format(test_generator.num_frames()))
@@ -270,8 +275,7 @@ def eval_data_prepare(receptive_field, inputs_2d, inputs_3d):
 
 if not args.evaluate:
     # wsx input data
-    cameras_train, poses_train, poses_train_2d = fetch(subjects_train, action_filter, subset=args.subset)
-    # action_train = fetch_action(subjects_train,
+    cameras_train, poses_train, poses_train_2d, aciton_class_label = fetch(subjects_train, action_filter, subset=args.subset)
 
     lr = args.learning_rate
     optimizer = optim.AdamW(model_pos_train.parameters(), lr=lr, weight_decay=0.1)
@@ -282,15 +286,16 @@ if not args.evaluate:
     losses_3d_train = []
     losses_3d_train_eval = []
     losses_3d_valid = []
+    losses_action_class_train = [] #wsx
 
     epoch = 0
     initial_momentum = 0.1
     final_momentum = 0.001
 
-    train_generator = ChunkedGenerator(args.batch_size//args.stride, cameras_train, poses_train, poses_train_2d, args.stride,
+    train_generator = ChunkedGenerator(args.batch_size//args.stride, cameras_train, poses_train, poses_train_2d, aciton_class_label, args.stride,
                                        pad=pad, causal_shift=causal_shift, shuffle=True, augment=args.data_augmentation,
                                        kps_left=kps_left, kps_right=kps_right, joints_left=joints_left, joints_right=joints_right)
-    train_generator_eval = UnchunkedGenerator(cameras_train, poses_train, poses_train_2d,
+    train_generator_eval = UnchunkedGenerator(cameras_train, poses_train, poses_train_2d,aciton_class_label,
                                               pad=pad, causal_shift=causal_shift, augment=False)
     print('INFO: Training on {} frames'.format(train_generator_eval.num_frames()))
 
@@ -314,20 +319,26 @@ if not args.evaluate:
         start_time = time()
         epoch_loss_3d_train = 0
         epoch_loss_traj_train = 0
-        epoch_loss_2d_train_unlabeled = 0
+        epoch_loss_action_class = 0 # wsx
         N = 0
         N_semi = 0
         model_pos_train.train()
 
-        for cameras_train, batch_3d, batch_2d in train_generator.next_epoch():
+        for cameras_train, batch_3d, batch_2d, batch_class_label in train_generator.next_epoch():   #, batch_class_label
+            print("enter train_generator.next_epoch()")
             cameras_train = torch.from_numpy(cameras_train.astype('float32'))
             inputs_3d = torch.from_numpy(batch_3d.astype('float32'))
             inputs_2d = torch.from_numpy(batch_2d.astype('float32'))
+            inputs_class_label = torch.from_numpy(batch_class_label.astype('long'))  # wsx
+            inputs_class_label = torch.squeeze(inputs_class_label)
+
+
 
             if torch.cuda.is_available():
                 inputs_3d = inputs_3d.cuda()
                 inputs_2d = inputs_2d.cuda()
                 cameras_train = cameras_train.cuda()
+                inputs_class_label = inputs_class_label.cuda()
             inputs_traj = inputs_3d[:, :, :1].clone()
             inputs_3d[:, :, 0] = 0
 
@@ -335,28 +346,33 @@ if not args.evaluate:
 
             # Predict 3D poses
             # wsx
-            predicted_3d_pos = model_pos_train(inputs_2d) # inputs_2d (512,81,17,2)
-            # predicted_action = model_action_train(inputs_2d)
+            predicted_3d_pos, predicted_action_class = model_pos_train(inputs_2d) # inputs_2d (512,81,17,2)
 
             del inputs_2d
             torch.cuda.empty_cache()
 
             # wsx loss
             loss_3d_pos = mpjpe(predicted_3d_pos, inputs_3d)
-            # loss_action = suancaiyu(predicted_action, inputs_action)
             epoch_loss_3d_train += inputs_3d.shape[0] * inputs_3d.shape[1] * loss_3d_pos.item()
             N += inputs_3d.shape[0] * inputs_3d.shape[1]
 
-            loss_total = loss_3d_pos
+            loss_class = loss_action_class(predicted_action_class, inputs_class_label)
+            print("loss_class: ",loss_class)
+            epoch_loss_action_class += inputs_class_label.shape[0] * loss_class.item()
 
+
+            loss_total = loss_3d_pos + loss_class
             loss_total.backward()
 
+
             optimizer.step()
-            del inputs_3d, loss_3d_pos, predicted_3d_pos
+            del inputs_3d, loss_3d_pos, predicted_3d_pos, inputs_class_label, loss_class, predicted_action_class
             # del inputs_action, predicted_action
             torch.cuda.empty_cache()
+            break
 
         losses_3d_train.append(epoch_loss_3d_train / N)
+        losses_action_class_train.append(epoch_loss_action_class / N)
         torch.cuda.empty_cache()
 
         # End-of-epoch evaluation
@@ -367,12 +383,15 @@ if not args.evaluate:
             epoch_loss_3d_valid = 0
             epoch_loss_traj_valid = 0
             epoch_loss_2d_valid = 0
+            epoch_loss_action_class_valid = 0
             N = 0
             if not args.no_eval:
                 # Evaluate on test set
-                for cam, batch, batch_2d in test_generator.next_epoch():
+                for cam, batch, batch_2d, batch_class_label in test_generator.next_epoch():
                     inputs_3d = torch.from_numpy(batch.astype('float32'))
                     inputs_2d = torch.from_numpy(batch_2d.astype('float32'))
+                    inputs_class_label = torch.from_numpy(batch_class_label.astype('long'))
+                    inputs_class_label = torch.squeeze(inputs_class_label)
 
                     ##### apply test-time-augmentation (following Videopose3d)
                     inputs_2d_flip = inputs_2d.clone()
@@ -387,9 +406,10 @@ if not args.evaluate:
                         inputs_2d = inputs_2d.cuda()
                         inputs_2d_flip = inputs_2d_flip.cuda()
                         inputs_3d = inputs_3d.cuda()
+                        inputs_class_label = inputs_class_label.cuda()
                     inputs_3d[:, :, 0] = 0
 
-                    predicted_3d_pos = model_pos(inputs_2d)
+                    predicted_3d_pos, predicted_action_class = model_pos(inputs_2d)
                     predicted_3d_pos_flip = model_pos(inputs_2d_flip)
                     predicted_3d_pos_flip[:, :, :, 0] *= -1
                     predicted_3d_pos_flip[:, :, joints_left + joints_right] = predicted_3d_pos_flip[:, :,
@@ -398,14 +418,17 @@ if not args.evaluate:
                     predicted_3d_pos = torch.mean(torch.cat((predicted_3d_pos, predicted_3d_pos_flip), dim=1), dim=1,
                                                   keepdim=True)
 
-                    del inputs_2d, inputs_2d_flip
+                    del inputs_2d, inputs_2d_flip, inputs_class_label
                     torch.cuda.empty_cache()
 
                     loss_3d_pos = mpjpe(predicted_3d_pos, inputs_3d)
                     epoch_loss_3d_valid += inputs_3d.shape[0] * inputs_3d.shape[1] * loss_3d_pos.item()
                     N += inputs_3d.shape[0] * inputs_3d.shape[1]
 
-                    del inputs_3d, loss_3d_pos, predicted_3d_pos
+                    loss_class = (predicted_action_class, inputs_class_label)
+                    epoch_loss_action_class_valid += inputs_class_label.shape[0] * loss_class.item()
+
+                    del inputs_3d, loss_3d_pos, predicted_3d_pos, inputs_class_label, loss_class, predicted_action_class
                     torch.cuda.empty_cache()
 
                 losses_3d_valid.append(epoch_loss_3d_valid / N)

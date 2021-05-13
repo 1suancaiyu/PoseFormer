@@ -7,6 +7,7 @@
 
 from itertools import zip_longest
 import numpy as np
+import torch
 
 
 # def getbone(seq, boneindex):
@@ -40,7 +41,7 @@ class ChunkedGenerator:
     kps_left and kps_right -- list of left/right 2D keypoints if flipping is enabled
     joints_left and joints_right -- list of left/right 3D joints if flipping is enabled
     """
-    def __init__(self, batch_size, cameras, poses_3d, poses_2d,
+    def __init__(self, batch_size, cameras, poses_3d, poses_2d, action_class,
                  chunk_length, pad=0, causal_shift=0,
                  shuffle=True, random_seed=1234,
                  augment=False, kps_left=None, kps_right=None, joints_left=None, joints_right=None,
@@ -65,6 +66,8 @@ class ChunkedGenerator:
             self.batch_cam = np.empty((batch_size, cameras[0].shape[-1]))
         if poses_3d is not None:
             self.batch_3d = np.empty((batch_size, chunk_length, poses_3d[0].shape[-2], poses_3d[0].shape[-1]))
+            # wsx
+            self.batch_class_label = np.empty((batch_size, chunk_length), dtype = object)
         self.batch_2d = np.empty((batch_size, chunk_length + 2*pad, poses_2d[0].shape[-2], poses_2d[0].shape[-1]))
 
         self.num_batches = (len(pairs) + batch_size - 1) // batch_size
@@ -80,6 +83,7 @@ class ChunkedGenerator:
         self.cameras = cameras
         self.poses_3d = poses_3d
         self.poses_2d = poses_2d
+        self.action_class = action_class  # wsx
         
         self.augment = augment
         self.kps_left = kps_left
@@ -120,6 +124,7 @@ class ChunkedGenerator:
                     end_2d = end_3d + self.pad - self.causal_shift
 
                     # 2D poses
+                    log = len(self.poses_2d[seq_i])
                     seq_2d = self.poses_2d[seq_i]
                     low_2d = max(start_2d, 0)
                     high_2d = min(end_2d, seq_2d.shape[0])
@@ -153,6 +158,10 @@ class ChunkedGenerator:
                             self.batch_3d[i, :, self.joints_left + self.joints_right] = \
                                     self.batch_3d[i, :, self.joints_right + self.joints_left]
 
+
+                    # action class label
+                    self.batch_class_label[i] = self.action_class[seq_i]
+
                     # Cameras
                     if self.cameras is not None:
                         self.batch_cam[i] = self.cameras[seq_i]
@@ -170,7 +179,7 @@ class ChunkedGenerator:
                 elif self.poses_3d is None:
                     yield self.batch_cam[:len(chunks)], None, self.batch_2d[:len(chunks)]
                 else:
-                    yield self.batch_cam[:len(chunks)], self.batch_3d[:len(chunks)], self.batch_2d[:len(chunks)]
+                    yield self.batch_cam[:len(chunks)], self.batch_3d[:len(chunks)], self.batch_2d[:len(chunks)], self.batch_class_label[:len(chunks)]
             
             if self.endless:
                 self.state = None
@@ -197,7 +206,7 @@ class UnchunkedGenerator:
     joints_left and joints_right -- list of left/right 3D joints if flipping is enabled
     """
     
-    def __init__(self, cameras, poses_3d, poses_2d, pad=0, causal_shift=0,
+    def __init__(self, cameras, poses_3d, poses_2d, class_label, pad=0, causal_shift=0,
                  augment=False, kps_left=None, kps_right=None, joints_left=None, joints_right=None):
         assert poses_3d is None or len(poses_3d) == len(poses_2d)
         assert cameras is None or len(cameras) == len(poses_2d)
@@ -213,6 +222,7 @@ class UnchunkedGenerator:
         self.cameras = [] if cameras is None else cameras
         self.poses_3d = [] if poses_3d is None else poses_3d
         self.poses_2d = poses_2d
+        self.class_label = class_label
         
     def num_frames(self):
         count = 0
@@ -227,12 +237,14 @@ class UnchunkedGenerator:
         self.augment = augment
     
     def next_epoch(self):
-        for seq_cam, seq_3d, seq_2d in zip_longest(self.cameras, self.poses_3d, self.poses_2d):
+        for seq_cam, seq_3d, seq_2d , seq_class_label in zip_longest(self.cameras, self.poses_3d, self.poses_2d, self.class_label):
             batch_cam = None if seq_cam is None else np.expand_dims(seq_cam, axis=0)
             batch_3d = None if seq_3d is None else np.expand_dims(seq_3d, axis=0)
             batch_2d = np.expand_dims(np.pad(seq_2d,
                             ((self.pad + self.causal_shift, self.pad - self.causal_shift), (0, 0), (0, 0)),
                             'edge'), axis=0)
+            batch_class_label = None if seq_class_label is None else np.expand_dims(seq_class_label, axis=0)
+
             if self.augment:
                 # Append flipped version
                 if batch_cam is not None:
@@ -249,4 +261,4 @@ class UnchunkedGenerator:
                 batch_2d[1, :, :, 0] *= -1
                 batch_2d[1, :, self.kps_left + self.kps_right] = batch_2d[1, :, self.kps_right + self.kps_left]
 
-            yield batch_cam, batch_3d, batch_2d
+            yield batch_cam, batch_3d, batch_2d, batch_class_label

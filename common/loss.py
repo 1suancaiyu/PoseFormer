@@ -7,6 +7,7 @@
 
 import torch
 import numpy as np
+import torch.nn as nn
 
 def mpjpe(predicted, target):
     """
@@ -16,7 +17,12 @@ def mpjpe(predicted, target):
     """
     assert predicted.shape == target.shape
     return torch.mean(torch.norm(predicted - target, dim=len(target.shape)-1))
-    
+
+def loss_action_class(class_pred, class_label):
+    assert class_pred.shape[0] == class_label.shape[0]
+    loss = nn.CrossEntropyLoss()
+    return loss(class_pred, class_label)
+
 def weighted_mpjpe(predicted, target, w):
     """
     Weighted mean per-joint position error (i.e. mean Euclidean distance)

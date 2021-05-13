@@ -181,28 +181,19 @@ class PoseTransformer(nn.Module):
         return x
 
     def forward(self, x):
-        print(x.shape) #[170, 81, 17, 2]
-        x = x.permute(0, 3, 1, 2)
-        print(x.shape) #[170, 2, 81, 17]
-        b, _, _, p = x.shape
-        print(x.shape) #[170, 2, 81, 17] b:batch_size p:joint_num
+        # x input shape [170, 81, 17, 2]
+        x = x.permute(0, 3, 1, 2)   #[170, 2, 81, 17]
+        b, _, _, p = x.shape    #[170, 2, 81, 17] b:batch_size p:joint_num
         ### now x is [batch_size, 2 channels, receptive frames, joint_num], following image data
-        x = self.Spatial_forward_features(x)
-        print(x.shape) #[170, 81, 544]
-        x = self.forward_features(x)
-        print(x.shape) #[170, 1, 544]
-        print(x)  # [170, 1, 544]
+        x = self.Spatial_forward_features(x)    #[170, 81, 544]
+        x = self.forward_features(x)    #[170, 1, 544]
 
         # action_class_head
-        # action_class = F.avg_pool1d(x, kernel_size=5)
-        action_class = x.permute(0,2,1)
-        print(action_class.shape) #[170, 544, 1]
+        action_class = x.permute(0,2,1) #[170, 544, 1]
         action_class = self.action_class_head(action_class)
-        action_class = F.softmax(action_class,dim=0)
-        print(action_class.shape) # [170, 30, 1]
-        print(action_class)
+        action_class = torch.squeeze(action_class)
 
         x = self.head(x)
         x = x.view(b, 1, p, -1)
-        return x, action_class
+        return x, action_class # [170,1,17,3]
 
