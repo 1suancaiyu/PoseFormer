@@ -261,14 +261,15 @@ test_generator = UnchunkedGenerator(cameras_valid, poses_valid, poses_valid_2d, 
                                     kps_left=kps_left, kps_right=kps_right, joints_left=joints_left, joints_right=joints_right)
 print('INFO: Testing on {} frames'.format(test_generator.num_frames()))
 
-def eval_data_prepare(receptive_field, inputs_2d, inputs_3d):
+def eval_data_prepare(receptive_field, inputs_2d, inputs_3d, inputs_class_label):
     inputs_2d_p = torch.squeeze(inputs_2d)
     inputs_3d_p = inputs_3d.permute(1,0,2,3)
     out_num = inputs_2d_p.shape[0] - receptive_field + 1
     eval_input_2d = torch.empty(out_num, receptive_field, inputs_2d_p.shape[1], inputs_2d_p.shape[2])
     for i in range(out_num):
         eval_input_2d[i,:,:,:] = inputs_2d_p[i:i+receptive_field, :, :]
-    return eval_input_2d, inputs_3d_p
+    inputs_class_label = inputs_class_label.repeat(1, out_num).permute(1,0)     #because all those frames just from one aciton class
+    return eval_input_2d, inputs_3d_p, inputs_class_label
 
 
 ###################
@@ -279,14 +280,21 @@ if not args.evaluate:
 
     lr = args.learning_rate
     optimizer = optim.AdamW(model_pos_train.parameters(), lr=lr, weight_decay=0.1)
-
     lr_decay = args.lr_decay
 
     # wsx output data
     losses_3d_train = []
+    losses_action_class_train = []  # wsx
+    losses_total_train = []
+
     losses_3d_train_eval = []
+    losses_action_class_train_eval = []
+
     losses_3d_valid = []
-    losses_action_class_train = [] #wsx
+    losses_action_class_valid = []
+
+    losses_total_valid = []
+
 
     epoch = 0
     initial_momentum = 0.1
@@ -318,8 +326,9 @@ if not args.evaluate:
     while epoch < args.epochs:
         start_time = time()
         epoch_loss_3d_train = 0
-        epoch_loss_traj_train = 0
         epoch_loss_action_class = 0 # wsx
+        epoch_loss_total = 0
+        epoch_loss_traj_train = 0
         N = 0
         N_semi = 0
         model_pos_train.train()
@@ -357,22 +366,21 @@ if not args.evaluate:
             N += inputs_3d.shape[0] * inputs_3d.shape[1]
 
             loss_class = loss_action_class(predicted_action_class, inputs_class_label)
-            print("loss_class: ",loss_class)
             epoch_loss_action_class += inputs_class_label.shape[0] * loss_class.item()
 
-
             loss_total = loss_3d_pos + loss_class
+            epoch_loss_total = epoch_loss_3d_train + epoch_loss_action_class
             loss_total.backward()
-
 
             optimizer.step()
             del inputs_3d, loss_3d_pos, predicted_3d_pos, inputs_class_label, loss_class, predicted_action_class
             # del inputs_action, predicted_action
             torch.cuda.empty_cache()
-            break
+            break # wsx
 
         losses_3d_train.append(epoch_loss_3d_train / N)
         losses_action_class_train.append(epoch_loss_action_class / N)
+        losses_total_train.append(epoch_loss_total / N)
         torch.cuda.empty_cache()
 
         # End-of-epoch evaluation
@@ -399,18 +407,18 @@ if not args.evaluate:
                     inputs_2d_flip[:, :, kps_left + kps_right, :] = inputs_2d_flip[:, :, kps_right + kps_left, :]
 
                     ##### convert size
-                    inputs_2d, inputs_3d = eval_data_prepare(receptive_field, inputs_2d, inputs_3d)
-                    inputs_2d_flip, _ = eval_data_prepare(receptive_field, inputs_2d_flip, inputs_3d)
+                    inputs_2d, inputs_3d, inputs_class_label_eval = eval_data_prepare(receptive_field, inputs_2d, inputs_3d, inputs_class_label)
+                    inputs_2d_flip, _ , _ = eval_data_prepare(receptive_field, inputs_2d_flip, inputs_3d, inputs_class_label)
 
                     if torch.cuda.is_available():
                         inputs_2d = inputs_2d.cuda()
                         inputs_2d_flip = inputs_2d_flip.cuda()
                         inputs_3d = inputs_3d.cuda()
-                        inputs_class_label = inputs_class_label.cuda()
+                        inputs_class_label_eval = inputs_class_label_eval.cuda()
                     inputs_3d[:, :, 0] = 0
 
                     predicted_3d_pos, predicted_action_class = model_pos(inputs_2d)
-                    predicted_3d_pos_flip = model_pos(inputs_2d_flip)
+                    predicted_3d_pos_flip, predicted_action_class_flip = model_pos(inputs_2d_flip)
                     predicted_3d_pos_flip[:, :, :, 0] *= -1
                     predicted_3d_pos_flip[:, :, joints_left + joints_right] = predicted_3d_pos_flip[:, :,
                                                                               joints_right + joints_left]
@@ -418,20 +426,34 @@ if not args.evaluate:
                     predicted_3d_pos = torch.mean(torch.cat((predicted_3d_pos, predicted_3d_pos_flip), dim=1), dim=1,
                                                   keepdim=True)
 
-                    del inputs_2d, inputs_2d_flip, inputs_class_label
+                    del inputs_2d, inputs_2d_flip
                     torch.cuda.empty_cache()
 
+                    # wsx valid loss
+                    # 3d valid loss
                     loss_3d_pos = mpjpe(predicted_3d_pos, inputs_3d)
                     epoch_loss_3d_valid += inputs_3d.shape[0] * inputs_3d.shape[1] * loss_3d_pos.item()
                     N += inputs_3d.shape[0] * inputs_3d.shape[1]
 
-                    loss_class = (predicted_action_class, inputs_class_label)
-                    epoch_loss_action_class_valid += inputs_class_label.shape[0] * loss_class.item()
+                    # class valid loss
+                    inputs_class_label_eval = inputs_class_label_eval.long()
+                    inputs_class_label_eval = torch.squeeze(inputs_class_label_eval)
+                    loss_class = loss_action_class(predicted_action_class, inputs_class_label_eval)
+                    epoch_loss_action_class_valid += inputs_class_label_eval.shape[0] * loss_class.item()
 
-                    del inputs_3d, loss_3d_pos, predicted_3d_pos, inputs_class_label, loss_class, predicted_action_class
+                    # total valid loss
+                    epoch_loss_total_valid = epoch_loss_3d_valid + epoch_loss_action_class_valid
+
+                    print("epoch_loss_action_class_valid", epoch_loss_action_class_valid)
+
+                    del inputs_3d, loss_3d_pos, predicted_3d_pos, inputs_class_label_eval, inputs_class_label, loss_class, predicted_action_class
                     torch.cuda.empty_cache()
 
+                # epoch loss append
                 losses_3d_valid.append(epoch_loss_3d_valid / N)
+                losses_action_class_valid.append(epoch_loss_action_class_valid / N)
+                losses_total_valid.append(epoch_loss_total_valid / N)
+
 
                 # Evaluate on training set, this time in evaluation mode
                 epoch_loss_3d_train_eval = 0
