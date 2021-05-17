@@ -1,0 +1,83 @@
+log: device count  3
+usage: run_poseformer.py [-h] [-d NAME] [-k NAME] [-str LIST] [-ste LIST]
+                         [-sun LIST] [-a LIST] [-c PATH]
+                         [--checkpoint-frequency N] [-r FILENAME]
+                         [--evaluate FILENAME] [--render] [--by-subject]
+                         [--export-training-curves] [-s N] [-e N] [-b N]
+                         [-drop P] [-lr LR] [-lrd LR] [-no-da] [-frame N]
+                         [--subset FRACTION] [--downsample FACTOR]
+                         [--warmup N] [--no-eval] [--dense]
+                         [--disable-optimizations] [--linear-projection]
+                         [--no-bone-length] [--no-proj] [--viz-subject STR]
+                         [--viz-action STR] [--viz-camera N]
+                         [--viz-video PATH] [--viz-skip N] [--viz-output PATH]
+                         [--viz-export PATH] [--viz-bitrate N]
+                         [--viz-no-ground-truth] [--viz-limit N]
+                         [--viz-downsample N] [--viz-size N]
+
+Training script
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -d NAME, --dataset NAME
+                        target dataset
+  -k NAME, --keypoints NAME
+                        2D detections to use
+  -str LIST, --subjects-train LIST
+                        training subjects separated by comma
+  -ste LIST, --subjects-test LIST
+                        test subjects separated by comma
+  -sun LIST, --subjects-unlabeled LIST
+                        unlabeled subjects separated by comma for self-
+                        supervision
+  -a LIST, --actions LIST
+                        actions to train/test on, separated by comma, or * for
+                        all
+  -c PATH, --checkpoint PATH
+                        checkpoint directory
+  --checkpoint-frequency N
+                        create a checkpoint every N epochs
+  -r FILENAME, --resume FILENAME
+                        checkpoint to resume (file name)
+  --evaluate FILENAME   checkpoint to evaluate (file name)
+  --render              visualize a particular video
+  --by-subject          break down error by subject (on evaluation)
+  --export-training-curves
+                        save training curves as .png images
+  -s N, --stride N      chunk size to use during training
+  -e N, --epochs N      number of training epochs
+  -b N, --batch-size N  batch size in terms of predicted frames
+  -drop P, --dropout P  dropout probability
+  -lr LR, --learning-rate LR
+                        initial learning rate
+  -lrd LR, --lr-decay LR
+                        learning rate decay per epoch
+  -no-da, --no-data-augmentation
+                        disable train-time flipping
+  -frame N, --number-of-frames N
+                        how many frames used as input
+  --subset FRACTION     reduce dataset size by fraction
+  --downsample FACTOR   downsample frame rate by factor (semi-supervised)
+  --warmup N            warm-up epochs for semi-supervision
+  --no-eval             disable epoch evaluation while training (small speed-
+                        up)
+  --dense               use dense convolutions instead of dilated convolutions
+  --disable-optimizations
+                        disable optimized model for single-frame predictions
+  --linear-projection   use only linear coefficients for semi-supervised
+                        projection
+  --no-bone-length      disable bone length term in semi-supervised settings
+  --no-proj             disable projection for semi-supervised setting
+  --viz-subject STR     subject to render
+  --viz-action STR      action to render
+  --viz-camera N        camera to render
+  --viz-video PATH      path to input video
+  --viz-skip N          skip first N frames of input video
+  --viz-output PATH     output file name (.gif or .mp4)
+  --viz-export PATH     output file name for coordinates
+  --viz-bitrate N       bitrate for mp4 videos
+  --viz-no-ground-truth
+                        do not show ground-truth poses
+  --viz-limit N         only render first N frames
+  --viz-downsample N    downsample FPS by a factor N
+  --viz-size N          image size
