@@ -380,7 +380,7 @@ if not args.evaluate:
             del inputs_3d, loss_3d_pos, predicted_3d_pos, inputs_class_label, loss_class, predicted_action_class
             # del inputs_action, predicted_action
             torch.cuda.empty_cache()
-            # break # wsx
+            break  #breakwsx
 
         losses_3d_train.append(epoch_loss_3d_train / N)
         losses_action_class_train.append(epoch_loss_action_class / N)
@@ -454,8 +454,7 @@ if not args.evaluate:
 
                     del inputs_3d, loss_3d_pos, predicted_3d_pos, inputs_class_label_valid, inputs_class_label, loss_class, predicted_action_class
                     torch.cuda.empty_cache()
-                    # wsx
-                    # break
+                    break # breakwsx
 
                 # epoch loss append
                 losses_3d_valid.append(epoch_loss_3d_valid / N)
@@ -514,8 +513,7 @@ if not args.evaluate:
 
                     del inputs_3d, loss_3d_pos, predicted_3d_pos, inputs_class_label_eval, predicted_action_class
                     torch.cuda.empty_cache()
-                    # wsx
-                    # break
+                    break # breakwsx
 
                 losses_3d_train_eval.append(epoch_loss_3d_train_eval / N)
                 losses_action_class_train_eval.append(epoch_loss_action_class_eval / N)
@@ -608,7 +606,7 @@ if not args.evaluate:
             }, best_chk_path)
 
         # Save training curves after every epoch, as .png images (if requested)
-        if args.export_training_curves and epoch > 1:
+        if args.export_training_curves and epoch > 3:
             #if 'matplotlib' not in sys.modules:
             import matplotlib
             matplotlib.use('Agg')
@@ -628,10 +626,33 @@ if not args.evaluate:
 
             plt.close('all')
 
+            # only action_class task
+            plt.figure()
+            epoch_x = np.arange(3, len(losses_3d_train)) + 1
+            plt.plot(epoch_x, losses_action_class_train[3:], '--', color='C0')
+            plt.plot(epoch_x, losses_action_class_valid[3:], color='C1')
+            plt.plot(epoch_x, losses_action_class_train_eval[3:], color='C2')
+            plt.legend(['action_class_train', 'action_class_valid', 'losses_action_class_valid (eval)' ])
+            plt.ylabel('action CrossEntropyLoss')
+            plt.xlabel('Epoch')
+            plt.xlim((3, epoch))
+            plt.savefig(os.path.join(args.checkpoint, 'loss_action_class_task.png'))
+
+            # only 3d task
+            plt.figure()
+            epoch_x = np.arange(3, len(losses_3d_train)) + 1
+            plt.plot(epoch_x, losses_3d_train[3:], '--', color='C0')
+            plt.plot(epoch_x, losses_3d_valid[3:], color='C1')
+            plt.plot(epoch_x, losses_3d_train_eval[3:], color='C2')
+            plt.legend(['3d train', '3d valid (eval)', 'losses_3d_train_eval'])
+            plt.ylabel('3d MPJPE (m)')
+            plt.xlabel('Epoch')
+            plt.xlim((3, epoch))
+            plt.savefig(os.path.join(args.checkpoint, 'loss_3d_task.png'))
+
             '''
             plt.figure()
             epoch_x = np.arange(3, len(losses_total_train)) + 1
-            plt.plot(epoch_x, losses_3d_train[3:], '--', color='C0')
             plt.plot(epoch_x, losses_3d_train[3:], '--', color='C0')
             plt.plot(epoch_x, losses_3d_train_eval[3:], color='C0')
             plt.plot(epoch_x, losses_3d_valid[3:], color='C1')
@@ -647,19 +668,21 @@ if not args.evaluate:
 
 
             '''
-            # wsx curves
-            print("visdom")
-            import visdom
-            viz = visdom.Visdom(env="poseformer")
-            L = np.array([[2 * x + 1, 2 * x ** 2 - x] for x in np.arange(1, 10)])
-            X = np.array([[x, x] for x in np.arange(1, 10)])
-            viz.line(X=X, Y=L, win="lossdemo", opts=dict(
-                xlabel="Iteration",
-                ylabel="Loss",
-                title="xxmodel",
-                legend=["Loss1", "Loss2"]
-
-            ))
+            
+            print('3d_train %f action_class_train %f total_train %f ' % (
+                losses_3d_train[-1] * 1000,
+                losses_action_class_train[-1] * 1000,
+                losses_total_train[-1] * 1000 ))
+            
+            print('3d_eval %f action_class_train_eval %f losses_total_eval %f ' % (
+                losses_3d_train_eval[-1] * 1000,
+                losses_action_class_train_eval[-1] * 1000,
+                losses_total_eval[-1] * 1000 ))
+            
+            print('3d_valid %f action_class_valid %f total_valid %f ' % (
+                losses_3d_valid[-1] * 1000,
+                losses_action_class_valid[-1] * 1000,
+                losses_total_valid[-1] * 1000 ))
             '''
 
 
