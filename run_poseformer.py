@@ -384,8 +384,8 @@ if not args.evaluate:
             # del inputs_action, predicted_action
             torch.cuda.empty_cache()
             train_times = train_times + 1
-            if train_times > 1:
-                break  #breakwsx
+            #if train_times > 0:
+            break  #breakwsx
 
         losses_3d_train.append(epoch_loss_3d_train / N)
         losses_action_class_train.append(epoch_loss_action_class / N)
@@ -404,7 +404,9 @@ if not args.evaluate:
             N = 0
             if not args.no_eval:
                 # Evaluate on test set
+                test_times = 0
                 for cam, batch, batch_2d, batch_class_label in test_generator.next_epoch():
+                    print("test_times: ",test_times)
                     inputs_3d = torch.from_numpy(batch.astype('float32'))
                     inputs_2d = torch.from_numpy(batch_2d.astype('float32'))
                     inputs_class_label = torch.from_numpy(batch_class_label.astype('long'))
@@ -448,25 +450,30 @@ if not args.evaluate:
                     inputs_class_label_valid = inputs_class_label_valid.long()
                     inputs_class_label_valid = torch.squeeze(inputs_class_label_valid)
                     loss_class = loss_action_class(predicted_action_class, inputs_class_label_valid)
-                    predicted_action_class = predicted_action_class.cuda().detach().numpy()
+
+                    #debug
+                    predicted_action_class = predicted_action_class.cpu().detach().numpy()
                     plt.hist(predicted_action_class, bins=40, facecolor="blue", edgecolor="black", alpha=0.7)
                     plt.xlabel("region")
                     plt.ylabel("frequency")
                     plt.title("TEST predicted_action_class")
-                    plt.savefig(os.path.join(args.checkpoint, 'TEST_predicted_action_class.png'))
+                    plt.savefig(os.path.join(args.checkpoint, 'zhifangtu', 'TEST_predicted_action_class_' + str(epoch) + '_' + str(test_times) + '.png'))
+                    plt.close('all')
 
                     epoch_loss_action_class_valid += inputs_class_label_valid.shape[0] * loss_class.item()
 
                     # total valid loss
                     epoch_loss_total_valid = epoch_loss_3d_valid + epoch_loss_action_class_valid
 
-                    print("valid epoch", epoch)
+                    print("epoch", epoch)
                     print("epoch_loss_3d_valid", epoch_loss_3d_valid)
                     print("epoch_loss_action_class_valid", epoch_loss_action_class_valid)
 
                     del inputs_3d, loss_3d_pos, predicted_3d_pos, inputs_class_label_valid, inputs_class_label, loss_class, predicted_action_class
                     torch.cuda.empty_cache()
-                    break # breakwsx
+                    test_times = test_times + 1
+                    if test_times > 5:
+                        break  # breakwsx
 
                 # epoch loss append
                 losses_3d_valid.append(epoch_loss_3d_valid / N)
@@ -481,7 +488,9 @@ if not args.evaluate:
                 epoch_loss_action_class_eval = 0
                 epoch_loss_total_eval = 0
                 N = 0
+                valid_times = 0
                 for cam, batch, batch_2d, batch_class_label in train_generator_eval.next_epoch():
+                    print("valid_times", valid_times)
                     if batch_2d.shape[1] == 0:
                         # This can only happen when downsampling the dataset
                         continue
@@ -516,6 +525,15 @@ if not args.evaluate:
                     loss_class = loss_action_class(predicted_action_class, inputs_class_label_eval)
                     epoch_loss_action_class_eval += inputs_class_label_eval.shape[0] * loss_class.item()
 
+                    #debug
+                    predicted_action_class = predicted_action_class.cpu().detach().numpy()
+                    plt.hist(predicted_action_class, bins=40, facecolor="blue", edgecolor="black", alpha=0.7)
+                    plt.xlabel("region")
+                    plt.ylabel("frequency")
+                    plt.title("VALID predicted_action_class")
+                    plt.savefig(os.path.join(args.checkpoint, 'zhifangtu', 'VALID_predicted_action_class'+ str(epoch) + '_' + str(valid_times) + '.png'))
+                    plt.close('all')
+
                     # total valid loss
                     epoch_loss_total_eval = epoch_loss_3d_train_eval + epoch_loss_action_class_eval
 
@@ -525,7 +543,10 @@ if not args.evaluate:
 
                     del inputs_3d, loss_3d_pos, predicted_3d_pos, inputs_class_label_eval, predicted_action_class
                     torch.cuda.empty_cache()
-                    break # breakwsx
+                    valid_times = valid_times + 1
+                    if valid_times > 5:
+                        break  # breakwsx
+
 
                 losses_3d_train_eval.append(epoch_loss_3d_train_eval / N)
                 losses_action_class_train_eval.append(epoch_loss_action_class_eval / N)
@@ -635,7 +656,6 @@ if not args.evaluate:
             plt.xlabel('Epoch')
             plt.xlim((3, epoch))
             plt.savefig(os.path.join(args.checkpoint, 'loss_2task.png'))
-
             plt.close('all')
 
             # only action_class task
@@ -649,6 +669,7 @@ if not args.evaluate:
             plt.xlabel('Epoch')
             plt.xlim((3, epoch))
             plt.savefig(os.path.join(args.checkpoint, 'loss_action_class_task.png'))
+            plt.close('all')
 
             # only 3d task
             plt.figure()
@@ -661,6 +682,7 @@ if not args.evaluate:
             plt.xlabel('Epoch')
             plt.xlim((3, epoch))
             plt.savefig(os.path.join(args.checkpoint, 'loss_3d_task.png'))
+            plt.close('all')
 
             '''
             plt.figure()
