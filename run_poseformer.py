@@ -30,7 +30,8 @@ from common.loss import *
 from common.generators import ChunkedGenerator, UnchunkedGenerator
 from time import time
 from common.utils import *
-
+import matplotlib
+import matplotlib.pyplot as plt
 # wsx
 from torchsummary import summary
 #from visdom import Visdom
@@ -147,7 +148,7 @@ def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
     action_class_number = -1
     for subject in subjects:
         for action in keypoints[subject].keys():
-            action_class_number = action_class_number +1  # use the action_class_number represent the action from 0 to 30
+            action_class_number = action_class_number + 1  # use the action_class_number represent the action from 0 to 30
             if action_filter is not None:
                 found = False
                 for a in action_filter:
@@ -161,6 +162,8 @@ def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
             #print(poses_2d)
             for i in range(len(poses_2d)): # Iterate across cameras
                 out_poses_2d.append(poses_2d[i])
+                # wsx
+                out_action_class_label.append(action_class_number)
 
             if subject in dataset.cameras():
                 cams = dataset.cameras()[subject]
@@ -175,8 +178,7 @@ def fetch(subjects, action_filter=None, subset=1, parse_3d_poses=True):
                 log = len(poses_3d)
                 for i in range(len(poses_3d)): # Iterate across cameras
                     out_poses_3d.append(poses_3d[i])
-                    # wsx
-                    out_action_class_label.append(action_class_number)
+
         action_class_number = -1
 
     if len(out_camera_params) == 0:
@@ -334,6 +336,7 @@ if not args.evaluate:
         N_semi = 0
         model_pos_train.train()
 
+        train_times = 0
         for cameras_train, batch_3d, batch_2d, batch_class_label in train_generator.next_epoch():   #, batch_class_label
             #print("enter train_generator.next_epoch()")
             cameras_train = torch.from_numpy(cameras_train.astype('float32'))
@@ -374,13 +377,15 @@ if not args.evaluate:
             print("train epoch",epoch)
             print("epoch_loss_3d_train", epoch_loss_3d_train)
             print("epoch_loss_action_class", epoch_loss_action_class)
-            loss_total.backward()
+            loss_class.backward()
 
             optimizer.step()
             del inputs_3d, loss_3d_pos, predicted_3d_pos, inputs_class_label, loss_class, predicted_action_class
             # del inputs_action, predicted_action
             torch.cuda.empty_cache()
-            break  #breakwsx
+            train_times = train_times + 1
+            if train_times > 1:
+                break  #breakwsx
 
         losses_3d_train.append(epoch_loss_3d_train / N)
         losses_action_class_train.append(epoch_loss_action_class / N)
@@ -443,6 +448,13 @@ if not args.evaluate:
                     inputs_class_label_valid = inputs_class_label_valid.long()
                     inputs_class_label_valid = torch.squeeze(inputs_class_label_valid)
                     loss_class = loss_action_class(predicted_action_class, inputs_class_label_valid)
+                    predicted_action_class = predicted_action_class.cuda().detach().numpy()
+                    plt.hist(predicted_action_class, bins=40, facecolor="blue", edgecolor="black", alpha=0.7)
+                    plt.xlabel("region")
+                    plt.ylabel("frequency")
+                    plt.title("TEST predicted_action_class")
+                    plt.savefig(os.path.join(args.checkpoint, 'TEST_predicted_action_class.png'))
+
                     epoch_loss_action_class_valid += inputs_class_label_valid.shape[0] * loss_class.item()
 
                     # total valid loss
@@ -608,9 +620,9 @@ if not args.evaluate:
         # Save training curves after every epoch, as .png images (if requested)
         if args.export_training_curves and epoch > 3:
             #if 'matplotlib' not in sys.modules:
-            import matplotlib
+
             matplotlib.use('Agg')
-            import matplotlib.pyplot as plt
+
 
             plt.figure()
             epoch_x = np.arange(3, len(losses_3d_train)) + 1
