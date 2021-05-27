@@ -193,6 +193,7 @@ class PoseTransformer(nn.Module):
         action_class = self.action_class_head(action_class)
         action_class = torch.squeeze(action_class)
 
+        # 3d head
         x = self.head(x)
         x = x.view(b, 1, p, -1)
         return x, action_class # [170,1,17,3]
