@@ -377,8 +377,10 @@ if not args.evaluate:
             plt_train.hist(predicted_action_class, density=1, bins=2, facecolor="blue", edgecolor="black")
             plt_train.axis([predicted_action_class.min(), predicted_action_class.max(), 0, 10])
             plt_train.title("train  " + " epoch " + str(epoch) + " train_times " + str(train_times))
-            plt_train.savefig(os.path.join(args.checkpoint, "train  " + " epoch " + str(epoch) + " train_times " + str(train_times) + '.png'))
-            plt_train.show()
+            if train_times % 20 == 0:
+                plt_train.savefig(os.path.join(args.checkpoint, "train  " + " epoch " + str(epoch) + " train_times " + str(train_times) + '.png'))
+                plt_train.show()
+                plt_train.close()
 
             loss_total = loss_3d_pos + loss_class
             epoch_loss_total = epoch_loss_3d_train + epoch_loss_action_class
@@ -465,8 +467,9 @@ if not args.evaluate:
                     plt_test.hist(predicted_action_class, density=1, bins=2, facecolor="blue", edgecolor="black")
                     plt_test.axis([predicted_action_class.min(), predicted_action_class.max(), 0, 10])
                     plt_test.title("test  " + " epoch " + str(epoch) + " test_times " + str(train_times))
-                    plt_test.savefig(os.path.join(args.checkpoint, "test  " + " epoch " + str(epoch) + " test_times " + str(test_times) + '.png'))
-                    plt_test.show()
+                    if test_times % 20 == 0:
+                        plt_test.savefig(os.path.join(args.checkpoint, "test  " + " epoch " + str(epoch) + " test_times " + str(test_times) + '.png'))
+                        plt_test.show()
 
 
                     epoch_loss_action_class_valid += inputs_class_label_valid.shape[0] * loss_class.item()
@@ -540,8 +543,9 @@ if not args.evaluate:
                     plt_valid.hist(predicted_action_class, density=1, bins=2, facecolor="blue", edgecolor="black")
                     plt_valid.axis([predicted_action_class.min(), predicted_action_class.max(), 0, 10])
                     plt_valid.title("valid  " + " epoch " + str(epoch) + " test_times " + str(train_times))
-                    plt_valid.savefig(os.path.join(args.checkpoint, "valid  " + " epoch " + str(epoch) + " valid_times " + str(valid_times) + '.png'))
-                    plt_valid.show()
+                    if valid_times % 20 == 0:
+                        plt_valid.savefig(os.path.join(args.checkpoint, "valid  " + " epoch " + str(epoch) + " valid_times " + str(valid_times) + '.png'))
+                        plt_valid.show()
 
                     # total valid loss
                     epoch_loss_total_eval = epoch_loss_3d_train_eval + epoch_loss_action_class_eval
